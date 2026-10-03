@@ -1,11 +1,12 @@
 /* The Ask page.
  *
  * A person opens a question card, types a business noun, chooses a match and
- * gets that question's answer for it. Five questions today: impact (L1,
- * "what breaks"), strategy (L2, "what are we trying to achieve"), risk (L6,
- * "what could hurt"), portfolio (L3, a deep link to rationalization
- * planning) and programme (L5, "what's changing"). One question is open at
- * a time
+ * gets that question's answer for it. All six lenses of the catalogue are
+ * here now: impact (L1, "what breaks"), strategy (L2, "what are we trying
+ * to achieve"), portfolio (L3, a deep link to rationalization planning),
+ * accountability (L4, "who's accountable"), programme (L5, "what's
+ * changing") and risk (L6, "what could hurt"). One question is open at a
+ * time
  * (openKey), and one shared picker (fixed input id / $refs.pickerInput --
  * see _entity_picker.html) sits in whichever panel is open; onSelect()
  * dispatches by openKey rather than always loading the impact answer.
@@ -47,6 +48,9 @@ function askSurface() {
         strategyState: 'idle',
         strategyBusy: false,
         initiatives: [],
+        accountabilityState: 'idle',
+        accountabilityBusy: false,
+        owners: [],
 
         init() {
             this.twinMapUrl = this.$el.getAttribute('data-twin-map-url') || '';
@@ -83,6 +87,8 @@ function askSurface() {
                 this.loadProgramme(option.id);
             } else if (this.openKey === 'strategy') {
                 this.loadStrategy(option.id);
+            } else if (this.openKey === 'accountability') {
+                this.loadAccountability(option.id);
             } else {
                 this.load(option.id);
             }
@@ -118,7 +124,13 @@ function askSurface() {
             }
             this.busy = false;
             this.syncDrawer();
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.state === 'ready' || self.state === 'empty') {
+                    Intelligence.showResults(self.$refs.resultsHeading);
+                }
+            });
         },
 
         /* L6 counterpart of load(). No provenance-drawer sync -- the drawer
@@ -145,7 +157,13 @@ function askSurface() {
                 this.riskState = 'error';
             }
             this.riskBusy = false;
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.riskState === 'ready' || self.riskState === 'empty') {
+                    Intelligence.showResults(self.$refs.riskResultsHeading);
+                }
+            });
         },
 
         /* L3: no rows, no drawer -- just resolves whether a deep link exists
@@ -173,6 +191,12 @@ function askSurface() {
                 this.portfolioState = 'error';
             }
             this.portfolioBusy = false;
+            var self = this;
+            this.$nextTick(function () {
+                if (self.portfolioState === 'ready' || self.portfolioState === 'empty') {
+                    Intelligence.showResults(self.$refs.portfolioResultsHeading);
+                }
+            });
         },
 
         /* L5 counterpart of loadRisk(). No provenance-drawer sync, same
@@ -197,7 +221,13 @@ function askSurface() {
                 this.programmeState = 'error';
             }
             this.programmeBusy = false;
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.programmeState === 'ready' || self.programmeState === 'empty') {
+                    Intelligence.showResults(self.$refs.programmeResultsHeading);
+                }
+            });
         },
 
         /* L2 counterpart of loadProgramme(). No provenance-drawer sync, same
@@ -222,7 +252,43 @@ function askSurface() {
                 this.strategyState = 'error';
             }
             this.strategyBusy = false;
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.strategyState === 'ready' || self.strategyState === 'empty') {
+                    Intelligence.showResults(self.$refs.strategyResultsHeading);
+                }
+            });
+        },
+
+        /* L4 counterpart of loadStrategy(). No provenance-drawer sync, no
+           blast-radius rows -- this lens is a pure ownership lookup, not a
+           traversal, so there is nothing to sync the drawer against. */
+        async loadAccountability(elementId) {
+            this.answeredKey = 'accountability';
+            this.accountabilityCentreId = elementId;
+            this._accountabilityLoadSeq = (this._accountabilityLoadSeq || 0) + 1;
+            var seq = this._accountabilityLoadSeq;
+            this.accountabilityBusy = true;
+            this.accountabilityState = 'loading';
+            try {
+                var payload = await Intelligence.fetchAccountability(elementId);
+                if (seq !== this._accountabilityLoadSeq) return;
+                this.owners = Intelligence.buildOwners(payload);
+                this.accountabilityState = this.owners.length ? 'ready' : 'empty';
+            } catch (err) {
+                if (seq !== this._accountabilityLoadSeq) return;
+                this.owners = [];
+                this.accountabilityState = 'error';
+            }
+            this.accountabilityBusy = false;
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.accountabilityState === 'ready' || self.accountabilityState === 'empty') {
+                    Intelligence.showResults(self.$refs.accountabilityResultsHeading);
+                }
+            });
         },
 
         async recomputeNow() {

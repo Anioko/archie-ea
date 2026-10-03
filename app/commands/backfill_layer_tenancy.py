@@ -25,6 +25,19 @@ boot, which is exactly where docker-compose runs it. Orphan assignment follows
 the house refusal-to-guess rule: with one organisation the rows go to it, with
 several the command demands --org-id rather than guessing a tenant.
 
+The organisation-column-everywhere brief reused this mechanism rather than
+adding a second one: its own text names a new
+`app/commands/backfill_organisation_columns.py`, but this command already
+provides column-discovery, per-row derivation and
+orphan/hardening handling for exactly the same problem shape (TenantMixin
+gained on an existing, populated table). Motivation, requirements, strategic
+and technology-layer tables newly gaining TenantMixin for that brief are
+registered in `_DERIVABLE_ORG`/`_PROVENANCE_ONLY` below instead of behind a
+duplicate command; the brief's shared-catalogue tables (framework.py,
+framework_configuration.py, reference_models.py, industry_apqc.py) use the new
+`HybridTenantMixin` instead, which this command's `_tenant_tables()` does not
+discover (nullable is their correct, permanent state, not an expand step).
+
     flask --app manage backfill-layer-tenancy --dry-run
     flask --app manage backfill-layer-tenancy
     flask --app manage backfill-layer-tenancy --org-id 7
@@ -47,6 +60,31 @@ from app import db
 # assigned to one operator-chosen org).
 # tenancy-ok: this backfill is what gives the column its values; it derives the
 # tenant from the joined row rather than assuming one.
+#
+# Ordering is load-bearing: _tenant_tables() sorts alphabetically, and
+# "application_ownership" < "organization_units", so application_ownership's
+# organization_id is always derived (or left NULL) before organization_units'
+# derivation reads it. If that alphabetical relationship ever changes, the
+# organization_units entry below must still run after application_ownership's.
+#
+# A row's creator/rated-by/generated-by user's own organization_id is only a
+# safe fallback when that user belongs to exactly their home organisation --
+# a user who is also a member of a second one (an org_roles row pointing
+# elsewhere) may have created the row while actively working in that other
+# organisation, which this cannot see. Guessing the home org then hands one
+# tenant's data to another, the exact failure the refuse-to-guess rule exists
+# to prevent (refuter finding H4 on PR 317). Embedded in every such subquery
+# below rather than filtered at the UPDATE's WHERE clause, so a user who
+# fails the check is excluded from COALESCE and the row falls through to the
+# next fallback (or stays an unresolved orphan) instead of being skipped
+# outright.
+# The "AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = <alias>.id
+# AND r.organization_id != <alias>.organization_id)" clause below, inlined
+# per entry rather than built from one shared helper: bandit's B608 flags any
+# f-string-constructed SQL-shaped text regardless of whether the
+# interpolated value is attacker-reachable (here it never is -- u/u2 are
+# this file's own fixed aliases), and the project's own convention is to
+# avoid the pattern entirely rather than carry a baseline exception for it.
 _DERIVABLE_ORG = {
     "vendor_product_capabilities": """
         UPDATE vendor_product_capabilities v
@@ -56,151 +94,290 @@ _DERIVABLE_ORG = {
            AND v.organization_id IS NULL
            AND b.organization_id IS NOT NULL
     """,
-    # roadmap_tasks rows predate the tenant column and carry no single
-    # provenance link; each statement fills only NULLs, in precedence order.
-    # The per-object links (the work package's creator, the consolidation
-    # entry's application) are checked before the task's own creating user:
-    # a user can be moved to a different organisation after the task was
-    # created (an admin route reassigns a removed user to another
-    # organisation), which would misattribute the task if the creating-user
-    # statement ran first. The work package's creator can move too, but it
-    # is ordinarily a different user than the task's own creator, and the
-    # consolidation entry's application is not read off a user at all, so
-    # checking both first is strictly safer than checking the task's own
-    # creator first.
-    "roadmap_tasks": [
-        # 1. the creator of the work package the task belongs to
-        """
-        UPDATE roadmap_tasks t
-           SET organization_id = u.organization_id
-          FROM unified_work_packages w
-          JOIN users u ON u.id = w.created_by
-         WHERE w.id = t.unified_work_package_id
-           AND t.organization_id IS NULL
-        """,
-        # 2. the application whose consolidation entry created the task
-        """
-        UPDATE roadmap_tasks t
-           SET organization_id = a.organization_id
-          FROM consolidation_list_entries e
-          JOIN application_components a ON a.id = e.application_id
-         WHERE e.roadmap_item_id = t.id
-           AND t.organization_id IS NULL
-           AND a.organization_id IS NOT NULL
-        """,
-        # 3. the user who created the task (set by the roadmap UI route);
-        # checked last because this user's own organization_id can change
-        # after the task was created
-        """
-        UPDATE roadmap_tasks t
-           SET organization_id = u.organization_id
-          FROM users u
-         WHERE u.id = t.created_by
-           AND t.organization_id IS NULL
-        """,
-    ],
-    # monitoring_baselines/monitoring_alerts predate TenantMixin and carry no
-    # foreign key to their owning tenant. Per-object provenance runs first:
-    # a baseline's own snapshot_data carries the ids of the capabilities it
-    # captured, and an organisation-owned capability (not a
-    # shared reference row) names its tenant directly, which is more reliable
-    # than the creating user -- a removed user is moved to the Default
-    # organisation, so the per-user statement alone would misattribute a
-    # baseline created in a real tenant to Default once its creator is
-    # removed. The id inside each JSON array element is guarded before the
-    # cast, never a bare CAST, the same rule every other statement here
-    # follows. Only the first statement (or neither) can fill a given row,
-    # since both guard on organization_id IS NULL; a row the first statement
-    # resolves never reaches the second.
-    "monitoring_baselines": [
-        # 1. an organisation-owned capability referenced in the baseline's
-        # own snapshot (skip when the snapshot holds only reference rows,
-        # i.e. every referenced capability has organization_id IS NULL).
-        # Known limit: a snapshot naming capabilities from more than one
-        # organisation (ORDER BY mb.id, uc.organization_id below, kept by
-        # DISTINCT ON) is assigned the lowest of those organisations' ids --
-        # not detected or reported as an ambiguous row.
-        #
-        # The row source is filtered in its own subquery, before the CROSS
-        # JOIN LATERAL: jsonb_array_elements() raises on a row whose
-        # "capabilities" key holds an object rather than an array (observed
-        # on a real database as {"capabilities": {}}), and a WHERE clause on
-        # the outer, single-level query cannot stop that -- the LATERAL
-        # still evaluates the function for every row the FROM clause
-        # produces, before any filter on its output runs. A subquery's
-        # WHERE, in contrast, holds before the subquery's rows exist at all,
-        # so only rows whose "capabilities" value is actually a JSON array
-        # reach the LATERAL; everything else contributes nothing to this
-        # statement and falls through to the created_by statement below, or
-        # stays NULL and is counted as unresolved like any other row with no
-        # usable provenance.
-        """
-        UPDATE monitoring_baselines b
-           SET organization_id = src.organization_id
+# An ownership row's tenant is its application's tenant — every production
+    # row resolves this way (nothing in app/ writes this table independently
+    # of a component). A row whose application itself has no organization_id
+    # is per-row provenance this statement cannot resolve; see
+    # _PROVENANCE_ONLY below for what happens to it.
+    "application_ownership": """
+        UPDATE application_ownership o
+           SET organization_id = c.organization_id
+          FROM application_components c
+         WHERE o.application_id = c.id
+           AND o.organization_id IS NULL
+           AND c.organization_id IS NOT NULL
+    """,
+    # A unit's tenant is derived from its own ownership rows, never guessed: a
+    # unit referenced by exactly one organisation's ownership rows takes that
+    # organisation; a unit referenced by more than one, or by none at all,
+    # stays NULL here. It is excluded from the residual sweep below
+    # (_PROVENANCE_ONLY), so with several organisations in the database it
+    # stays NULL and is reported, never assigned, with or without --org-id;
+    # with exactly one organisation the ordinary single-organisation rule
+    # still applies, same as every other table.
+    "organization_units": """
+        UPDATE organization_units u
+           SET organization_id = s.org_id
           FROM (
-                SELECT DISTINCT ON (mb.id) mb.id AS row_id, uc.organization_id
-                  FROM (
-                        SELECT id, snapshot_data
-                          FROM monitoring_baselines
-                         WHERE organization_id IS NULL
-                           AND snapshot_data ~ '^\\s*\\{'
-                           AND jsonb_typeof(snapshot_data::jsonb -> 'capabilities') = 'array'
-                       ) AS mb
-                  CROSS JOIN LATERAL jsonb_array_elements(
-                        mb.snapshot_data::jsonb -> 'capabilities'
-                      ) AS cap_elem
-                  JOIN unified_capabilities uc
-                    ON uc.id = CASE WHEN (cap_elem ->> 'id') ~ '^[0-9]+$'
-                                     THEN (cap_elem ->> 'id')::bigint END
-                 WHERE uc.organization_id IS NOT NULL
-                 ORDER BY mb.id, uc.organization_id
-               ) AS src
-         WHERE src.row_id = b.id
-           AND b.organization_id IS NULL
-        """,
-        # 2. the user who created the baseline; cast the integer id to text,
-        # never the reverse, which would raise on a non-numeric value such as
-        # the literal string "system" a caller may have written before this
-        # backfill existed, and abort the whole schema deploy
-        """
-        UPDATE monitoring_baselines b
+                SELECT organization_unit_id, MIN(organization_id) AS org_id
+                  FROM application_ownership
+                 WHERE organization_id IS NOT NULL
+                 GROUP BY organization_unit_id
+                HAVING COUNT(DISTINCT organization_id) = 1
+               ) s
+         WHERE u.id = s.organization_unit_id
+           AND u.organization_id IS NULL
+    """,
+    # An options analysis belongs to the organisation that owns the capability it
+    # analyses: capability_id is NOT NULL and points at business_capability, which
+    # is already tenant-fenced. An analysis whose capability itself has no
+    # organisation cannot be resolved here; see _PROVENANCE_ONLY.
+    "options_analysis": """
+        UPDATE options_analysis a
+           SET organization_id = b.organization_id
+          FROM business_capability b
+         WHERE a.capability_id = b.id
+           AND a.organization_id IS NULL
+           AND b.organization_id IS NOT NULL
+    """,
+    # A stakeholder input belongs to its analysis. Ordering is load-bearing in the
+    # same way as above: "options_analysis" < "stakeholder_inputs", so the analysis
+    # is derived (or left NULL) before this reads it.
+    "stakeholder_inputs": """
+        UPDATE stakeholder_inputs i
+           SET organization_id = a.organization_id
+          FROM options_analysis a
+         WHERE i.analysis_id = a.id
+           AND i.organization_id IS NULL
+           AND a.organization_id IS NOT NULL
+    """,
+
+    # --- Motivation, requirements, strategic and technology
+    # layer tables. Every entry below derives from a table that is already
+    # tenant-fenced (archimate_elements, business_capability,
+    # strategic_initiatives, solutions, solution_analysis_sessions,
+    # application_components) or from users -- none of them depend on another
+    # entry in THIS dict resolving first, so the alphabetical-ordering
+    # constraint documented above is not in play for this group, except
+    # "drivers" < "goals" for goals' own driver_id fallback below.
+    "archimate_resources": """
+        UPDATE archimate_resources r
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE r.archimate_element_id = e.id
+           AND r.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
+    "assessments": """
+        UPDATE assessments a
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE a.archimate_element_id = e.id
+           AND a.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
+    "capability_health_overrides": """
+        UPDATE capability_health_overrides c
+           SET organization_id = b.organization_id
+          FROM business_capability b
+         WHERE c.capability_id = b.id
+           AND c.organization_id IS NULL
+           AND b.organization_id IS NOT NULL
+    """,
+    "drivers": """
+        UPDATE drivers d
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               )
+         WHERE d.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               ) IS NOT NULL
+    """,
+    # A briefing's generated_by_id is a plain integer, not an FK constraint
+    # (see app/models/strategic.py), but it is a user id in every writer of
+    # this table -- resolved the same way, just without a declared FK to lean on.
+    "enterprise_briefings": """
+        UPDATE enterprise_briefings eb
            SET organization_id = u.organization_id
           FROM users u
-         WHERE u.id::text = b.created_by
-           AND b.organization_id IS NULL
-        """,
-    ],
-    # monitoring_alerts from the acknowledging user; same cast direction as
-    # above. Per-object provenance runs first: a maturity-regression alert
-    # (affected_element_type = 'capability') names the capability id that
-    # regressed, and an organisation-owned capability carries its tenant
-    # directly -- more reliable than the acknowledging user, who may be a
-    # different tenant's operator or None on an unacknowledged alert.
-    "monitoring_alerts": [
-        # 1. the capability that regressed, when the alert type carries a
-        # capability id in affected_element_id. The column is already
-        # integer-typed, but the same guarded pattern as every other
-        # statement here is used for consistency.
-        """
-        UPDATE monitoring_alerts a
-           SET organization_id = uc.organization_id
-          FROM unified_capabilities uc
-         WHERE a.affected_element_type = 'capability'
-           AND uc.id = CASE WHEN a.affected_element_id::text ~ '^[0-9]+$'
-                             THEN a.affected_element_id::bigint END
-           AND uc.organization_id IS NOT NULL
-           AND a.organization_id IS NULL
-        """,
-        # 2. the acknowledging user (works for acknowledged alerts only;
-        # unacknowledged alerts with no capability provenance stay NULL)
-        """
-        UPDATE monitoring_alerts a
-           SET organization_id = u.organization_id
-          FROM users u
-         WHERE u.id::text = a.acknowledged_by
-           AND a.organization_id IS NULL
-        """,
-    ],
+         WHERE eb.generated_by_id = u.id
+           AND eb.organization_id IS NULL
+           AND u.organization_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)
+    """,
+    # "drivers" < "goals": the driver_id fallback below reads drivers'
+    # organization_id after this dict has already derived it, not before.
+    "goals": """
+        UPDATE goals g
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
+                 (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               )
+         WHERE g.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
+                 (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               ) IS NOT NULL
+    """,
+    "meanings": """
+        UPDATE meanings m
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE m.archimate_element_id = e.id
+           AND m.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
+    "motivation_bridge_links": """
+        UPDATE motivation_bridge_links k
+           SET organization_id = s.organization_id
+          FROM solutions s
+         WHERE k.solution_id = s.id
+           AND k.organization_id IS NULL
+           AND s.organization_id IS NOT NULL
+    """,
+    "programme_snapshots": """
+        UPDATE programme_snapshots p
+           SET organization_id = i.organization_id
+          FROM strategic_initiatives i
+         WHERE p.initiative_id = i.id
+           AND p.organization_id IS NULL
+           AND i.organization_id IS NOT NULL
+    """,
+    # Requirement's four ArchiMate-element-pointing columns (Basecoat pattern)
+    # all resolve through the same table; the first one set on a given row is
+    # tried, since a row rarely has more than one populated. Falling further
+    # back to application_component_id covers rows with none of the four.
+    "requirements": """
+        UPDATE requirements r
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e
+                   WHERE e.id = COALESCE(r.archimate_element_id, r.stakeholder_id, r.driver_id, r.goal_id)),
+                 (SELECT c.organization_id FROM application_components c WHERE c.id = r.application_component_id)
+               )
+         WHERE r.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e
+                   WHERE e.id = COALESCE(r.archimate_element_id, r.stakeholder_id, r.driver_id, r.goal_id)),
+                 (SELECT c.organization_id FROM application_components c WHERE c.id = r.application_component_id)
+               ) IS NOT NULL
+    """,
+    "solution_adr_links": """
+        UPDATE solution_adr_links l
+           SET organization_id = s.organization_id
+          FROM solution_analysis_sessions s
+         WHERE l.session_id = s.id
+           AND l.organization_id IS NULL
+           AND s.organization_id IS NOT NULL
+    """,
+    "solution_migration_roadmaps": """
+        UPDATE solution_migration_roadmaps m
+           SET organization_id = COALESCE(
+                 (SELECT s.organization_id FROM solutions s WHERE s.id = m.solution_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               )
+         WHERE m.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT s.organization_id FROM solutions s WHERE s.id = m.solution_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               ) IS NOT NULL
+    """,
+    "stakeholders": """
+        UPDATE stakeholders h
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               )
+         WHERE h.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
+               ) IS NOT NULL
+    """,
+    "strategic_milestones": """
+        UPDATE strategic_milestones m
+           SET organization_id = i.organization_id
+          FROM strategic_initiatives i
+         WHERE m.initiative_id = i.id
+           AND m.organization_id IS NULL
+           AND i.organization_id IS NOT NULL
+    """,
+    "strategic_recommendations": """
+        UPDATE strategic_recommendations s
+           SET organization_id = COALESCE(
+                 (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u2.id AND r.organization_id != u2.organization_id))
+               )
+         WHERE s.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u2.id AND r.organization_id != u2.organization_id))
+               ) IS NOT NULL
+    """,
+    # "values" is a reserved SQL keyword -- the table name must stay quoted.
+    "values": """
+        UPDATE "values" v
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE v.archimate_element_id = e.id
+           AND v.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
+}
+
+# Tables whose remaining NULL rows carry per-row provenance rather than a
+# single owning entity this command can always resolve: an ownership row
+# whose own application has no organization_id, or a unit referenced by more
+# than one organisation's ownership rows, or by none. Handing either to an
+# operator-chosen --org-id would move another tenant's row into view, so with
+# several organisations in the database the row stays NULL here and is only
+# reported, never a candidate for the single-organisation or --org-id orphan
+# assignment below. With exactly one organisation there is no other one it
+# could belong to, so the ordinary single-organisation rule still applies.
+_PROVENANCE_ONLY = {
+    "application_ownership", "options_analysis", "organization_units", "stakeholder_inputs",
+    # Every table above whose _DERIVABLE_ORG entry can leave
+    # a genuine remainder (a row whose own attribution columns are all NULL,
+    # or all point at rows that are themselves unattributed) -- the fenced,
+    # 100%-resolvable-by-a-NOT-NULL-FK tables (motivation_bridge_links,
+    # strategic_milestones, capability_health_overrides, programme_snapshots,
+    # solution_migration_roadmaps, solution_adr_links) are deliberately left
+    # out: an orphan there cannot occur under normal FK integrity, so there is
+    # nothing for this set to protect.
+    "drivers", "goals", "meanings", "values", "assessments", "stakeholders", "requirements",
+    "strategic_recommendations", "enterprise_briefings",
+    # No _DERIVABLE_ORG entry at all -- every existing row is an orphan
+    # candidate, for two different reasons:
+    # monitoring_alerts/monitoring_baselines have no FK at all to any
+    # tenant-fenced table -- affected_element_id is a bare, unconstrained
+    # integer whose target table varies by affected_element_type
+    # ("architecture", "capability", "vendor", ...), so there is no single
+    # join that can resolve it without risking a wrong-tenant guess.
+    "monitoring_alerts", "monitoring_baselines",
+    # framework_instances/reference_model_import/industry_process_recommendation
+    # DO have an FK (configuration_id/reference_model_id/industry_framework_id
+    # and industry_process_id), but every one of those targets is a
+    # HybridTenantMixin shared-catalogue table with organization_id always
+    # NULL by design, so following it resolves to nothing either way.
+"framework_instances", "reference_model_import", "industry_process_recommendation",
 }
 
 # Tables whose rows carry per-row provenance rather than a single owning
@@ -274,9 +451,19 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
     """
     from sqlalchemy import inspect, text
 
-    insp = inspect(db.engine)
-    live = set(insp.get_table_names())
+    # Bound to this connection, not db.engine: an engine-level Inspector
+    # checks out a second, separate connection per call. This function's own
+    # DDL (ADD COLUMN, CREATE INDEX, SET NOT NULL below) runs on `conn` inside
+    # one uncommitted transaction across the whole loop, so a second
+    # connection's catalog lookups on an already-altered table block on locks
+    # `conn` will not release until the loop finishes -- a self-inflicted
+    # deadlock, reproduced on 2+ databases and on CI (a 6-hour-plus hang on
+    # PR 317/323). Binding the Inspector to `conn` keeps every introspection
+    # query on the same connection and transaction as the writes, so there is
+    # never a second backend to wait on.
     conn = db.session.connection()
+    insp = inspect(conn)
+    live = set(insp.get_table_names())
 
     repaired, absent = [], []
     healthy = 0
@@ -306,12 +493,12 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             col = {"nullable": True}
 
         # A table that can state its own tenant does so first, so those rows
-        # never reach the guess-based orphan pass below. Run this in dry-run
+# never reach the guess-based orphan pass below. Run this in dry-run
         # too (it is rolled back with everything else at the end of this
         # function): the orphan count taken right after must reflect rows
         # with no provenance at all, not rows a real run would derive a
-        # moment later, or the "would leave NULL" line below overstates how
-        # many rows actually have no provenance.
+        # moment later, or a dry-run's residual report for a _PROVENANCE_ONLY
+        # table would overstate it.
         if t in _DERIVABLE_ORG:
             stmts = _DERIVABLE_ORG[t]
             stmts = [stmts] if isinstance(stmts, str) else stmts
@@ -328,11 +515,12 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             healthy += 1
             continue
 
-        # roadmap_tasks (and any other per-row-provenance table) never hands
-        # an orphan to an operator-chosen organisation: with several tenants
-        # in the database an unresolved row is another tenant's plan, not a
-        # guess this command is allowed to make. With exactly one tenant
-        # there is no other organisation it could belong to, so the ordinary
+# roadmap_tasks, application_ownership and organization_units
+        # (_PROVENANCE_ONLY) never hand a row _DERIVABLE_ORG could not resolve
+        # to an operator-chosen organisation: with several tenants in the
+        # database an unresolved row is another tenant's data, not a guess this
+        # command is allowed to make. With exactly one tenant there is no
+        # other organisation it could belong to, so the ordinary
         # single-organisation rule still applies.
         deferred = False
         if orphans and t in _PROVENANCE_ONLY:
@@ -340,16 +528,11 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             if org_count != 1:
                 deferred = True
                 unresolved[t] = orphans
-                if dry_run:
-                    click.echo(
-                        f"  - {t}: {orphans} row(s) have no tenant provenance; "
-                        "would leave NULL and report, not assigned"
-                    )
-                else:
-                    click.echo(
-                        f"  ! {t}: {orphans} row(s) have no tenant provenance; "
-                        "left NULL and reported, not assigned"
-                    )
+verb, prefix = ("would leave", "-") if dry_run else ("left", "!")
+                click.echo(
+                    f"  {prefix} {t}: {orphans} row(s) have no tenant provenance; "
+                    f"{verb} NULL and reported, not assigned"
+                )
 
         if orphans and not deferred:
             if resolved_org is None:

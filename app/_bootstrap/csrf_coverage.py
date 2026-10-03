@@ -62,6 +62,10 @@ VIEW_OPT_OUT = {
     "app.modules.admin.v2.routes.admin_routes.jira_webhook":
         "Jira webhook receiver — external caller, signature-verified, no "
         "session.",
+    "app.modules.admin.routes.admin_routes.jira_webhook":
+        "Jira webhook receiver — external caller, signature-verified, no "
+        "session. Same exemption as the v2 module above; this is the v1 "
+        "fallback registered when USE_ADMIN_GUARDRAILS is off.",
     "app.modules.architecture.routes.webhook_routes.jira_webhook":
         "Jira webhook receiver — external caller, signature-verified, no "
         "session.",
