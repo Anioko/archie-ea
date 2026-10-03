@@ -156,9 +156,6 @@ POLICY = {
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
 
-for _allowed in OVERSIGHT_POST_POLICY.values():
-    _allowed.add("platform_admin")
-
 ACCOUNT_POST_POLICY = {
     "/account/switch-organization": set(ARCHETYPES),
 }
@@ -167,6 +164,9 @@ OVERSIGHT_POST_POLICY = {
     "/ai-chat/oversight/pause":  set(),
     "/ai-chat/oversight/resume": set(),
 }
+
+for _allowed in OVERSIGHT_POST_POLICY.values():
+    _allowed.add("platform_admin")
 
 # The versioned Transformation Room collection is portfolio data.  These are
 # the persisted enterprise roles admitted by TransformationProgrammeService;
