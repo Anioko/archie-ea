@@ -639,6 +639,108 @@ class TestDriverGoalLinking:
         # Org B's goal must not appear
         assert goal_b.id not in candidate_ids
 
+    def test_old_route_link_driver_to_goal_cross_tenant_rejected(self, db_session, make_org, client, login_as):
+        """The pre-existing /archimate/api/link/driver-to-goal route refuses
+        another organisation's goal and does not overwrite."""
+        from app.models.motivation import Driver, Goal
+
+        suffix = _org_suffix()
+        org_a = make_org(f"old-link-cross-a-{suffix}")
+        org_b = make_org(f"old-link-cross-b-{suffix}")
+        user_a = _user(db_session, org_a.id, f"a-{suffix}")
+
+        driver_a = Driver(
+            name=f"Driver A {suffix}",
+            driver_type="regulatory",
+            source="external",
+            organization_id=org_a.id,
+        )
+        db_session.add(driver_a)
+
+        goal_b = Goal(
+            name=f"Goal B {suffix}",
+            goal_type="strategic",
+            status="active",
+            organization_id=org_b.id,
+        )
+        db_session.add(goal_b)
+        db_session.flush()
+        db_session.commit()
+
+        # Org A user tries to link their driver to org B's goal via the old route
+        login_as(client, user_a)
+        resp = client.post(
+            "/archimate/api/link/driver-to-goal",
+            json={"driver_id": driver_a.id, "goal_id": goal_b.id},
+        )
+        assert resp.status_code == 404
+        data = resp.get_json()
+        assert "error" in data
+
+        # Verify goal_b.driver_id is still None (no overwrite)
+        db_session.refresh(goal_b)
+        assert goal_b.driver_id is None
+
+    def test_old_route_link_driver_to_goal_rejects_overwrite(self, db_session, make_org, client, login_as):
+        """The pre-existing /archimate/api/link/driver-to-goal route rejects
+        overwriting an already-linked goal."""
+        from app.models.motivation import Driver, Goal
+
+        suffix = _org_suffix()
+        org = make_org(f"old-link-overwrite-{suffix}")
+        user = _user(db_session, org.id, suffix)
+
+        driver1 = Driver(
+            name=f"First Driver {suffix}",
+            driver_type="regulatory",
+            source="external",
+            organization_id=org.id,
+        )
+        db_session.add(driver1)
+
+        driver2 = Driver(
+            name=f"Second Driver {suffix}",
+            driver_type="competitive",
+            source="internal",
+            organization_id=org.id,
+        )
+        db_session.add(driver2)
+
+        goal = Goal(
+            name=f"Already Linked Goal {suffix}",
+            goal_type="strategic",
+            status="active",
+            organization_id=org.id,
+        )
+        db_session.add(goal)
+        db_session.flush()
+        db_session.commit()
+
+        login_as(client, user)
+
+        # First link via the old route succeeds
+        resp = client.post(
+            "/archimate/api/link/driver-to-goal",
+            json={"driver_id": driver1.id, "goal_id": goal.id},
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["ok"] is True
+
+        # Second link to a different driver via the old route is rejected
+        resp = client.post(
+            "/archimate/api/link/driver-to-goal",
+            json={"driver_id": driver2.id, "goal_id": goal.id},
+        )
+        assert resp.status_code == 409
+        data = resp.get_json()
+        assert "error" in data
+        assert "already linked" in data["error"]
+
+        # Verify goal is still linked to driver1
+        db_session.refresh(goal)
+        assert goal.driver_id == driver1.id
+
 
 # --------------------------------------------------------------------------- #
 # Trace from here URL
