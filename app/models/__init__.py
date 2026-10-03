@@ -119,6 +119,8 @@ else:
     from .capabilities import *  # noqa
     from .capability_governance import *  # noqa - CapabilityGovernanceDecision
     from .compliance_models import *  # noqa
+    from .regulatory_framework import *  # noqa - FrameworkAdoption, AdoptedControl (tenant-hybrid framework catalogue)
+    from .regulatory_change import *  # noqa - RegulatoryChange, RegulatoryChangeImpact (regulatory change tracker)
     from .cost_intelligence import *  # noqa - CapabilityCostAllocation, VendorContract, SLA (Cost intelligence)
     from .decision_ledger import *  # noqa - DecisionLedger (append-only governance ledger)
 
