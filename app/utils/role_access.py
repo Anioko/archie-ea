@@ -645,6 +645,8 @@ _MY_WORK_LINKS = {
         # its sidebar. 28 nav links on the CTO dashboard, none of them this.
         # Finding a page by grepping the source is not finding it.
         _link("Tech Radar", "tech_radar.index", "radar"),
+        # Ownership coverage by business unit — CTO accountability.
+        _link("Ownership Coverage", "unified_applications.ownership_coverage", "users"),
     ],
     ROLE_BUSINESS_ARCHITECT: [
         # BA-A1/A2. This persona had 4 links against a budget of 27 while
@@ -736,6 +738,8 @@ _MY_WORK_LINKS = {
         # zone has ample headroom, and portfolio_manager already owns
         # Rationalization above, from which this page is reached in context.
         _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
+        # Ownership coverage by business unit — portfolio manager accountability.
+        _link("Ownership Coverage", "unified_applications.ownership_coverage", "users"),
     ],
     ROLE_PROCUREMENT: [
         # Fix round: Overview, Licences and Compliance were reachable from
