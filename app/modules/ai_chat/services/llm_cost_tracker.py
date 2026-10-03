@@ -245,7 +245,7 @@ class LLMCostTracker:
 
         return Decimal(str(result)) if result else Decimal("0")
 
-def _get_organization_spending(self, since: datetime) -> Decimal:
+    def _get_organization_spending(self, since: datetime) -> Decimal:
         """Get total organization spending since a given date."""
         org_id = current_org_id()
         if org_id is None:
@@ -399,13 +399,6 @@ def _get_organization_spending(self, since: datetime) -> Decimal:
                 "projected_overage": float(max(Decimal("0"), projected_monthly - org_budget)),
                 "on_track": projected_monthly <= org_budget,
             },
-            "alerts": {
-                "soft_limit_reached": org_spending
-                >= org_budget * Decimal(str(self.SOFT_LIMIT_THRESHOLD)),
-                "hard_limit_reached": org_spending
-                >= org_budget * Decimal(str(self.HARD_LIMIT_THRESHOLD)),
-            },
-        }
             "alerts": {
                 "soft_limit_reached": org_spending
                 >= org_budget * Decimal(str(self.SOFT_LIMIT_THRESHOLD)),
