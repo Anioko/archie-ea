@@ -7,6 +7,8 @@ through ``app/services/outbox.py`` and the relay copies rows here.
 
 from __future__ import annotations
 
+from sqlalchemy.dialects.postgresql import JSONB
+
 from app import db
 from app.models.mixins import TenantMixin
 
@@ -24,7 +26,7 @@ class EventLogRecord(TenantMixin, db.Model):
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     event_type = db.Column(db.String(160), nullable=False)
     event_id = db.Column(db.String(36), nullable=False)
-    payload_json = db.Column(db.JSON, nullable=False)
+    payload_json = db.Column(JSONB, nullable=False)
     ordinal = db.Column(db.BigInteger, nullable=False)
     entity_type = db.Column(db.String(80), nullable=True)
     entity_id = db.Column(db.Integer, nullable=True)
