@@ -22,7 +22,7 @@ def _oversight_service():
 
 def _require_org_admin():
     """Check if current user is an organisation admin."""
-    if not (hasattr(current_user, "is_org_admin") and current_user.is_org_admin):
+    if not current_user.is_org_admin:
         return jsonify({"success": False, "error": "Organisation administrator privileges required"}), 403
     return None
 
@@ -94,8 +94,12 @@ def get_refused_calls():
 
     user_id = request.args.get("user_id", type=int)
     tool_name = request.args.get("tool_name")
-    limit = min(request.args.get("limit", 100, type=int), 500)
+    limit = request.args.get("limit", 100, type=int)
     offset = request.args.get("offset", 0, type=int)
+
+    if limit < 1 or offset < 0:
+        return jsonify({"success": False, "error": "limit must be >= 1 and offset must be >= 0"}), 400
+    limit = min(limit, 500)
 
     result = _oversight_service().get_refused_calls(
         user_id=user_id,
