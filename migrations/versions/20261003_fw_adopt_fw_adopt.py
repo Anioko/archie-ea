@@ -14,7 +14,7 @@ from alembic import op
 from sqlalchemy import text
 
 revision = "20261003_fw_adopt"
-down_revision = "20261002_data_domain_org_unique"
+down_revision = "20261002_agent_oversight_state"
 branch_labels = None
 depends_on = None
 
