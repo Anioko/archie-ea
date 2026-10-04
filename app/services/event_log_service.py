@@ -114,6 +114,60 @@ def _append_one(outbox: OperationOutboxEvent) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Partition maintenance
+# --------------------------------------------------------------------------- #
+
+
+def ensure_future_partitions(months_ahead: int = 3) -> int:
+    """Create monthly partitions for the next *months_ahead* months if missing.
+
+    Idempotent — checks existence before creating so a re-run is a no-op.
+    Returns the number of partitions actually created (0 when all exist).
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    created = 0
+    for offset in range(months_ahead):
+        month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+        if offset > 0:
+            y, m = month_start.year, month_start.month + offset
+            while m > 12:
+                y += 1
+                m -= 12
+            month_start = datetime(y, m, 1, tzinfo=timezone.utc)
+        next_start = datetime(
+            month_start.year + (month_start.month // 12),
+            (month_start.month % 12) + 1, 1, tzinfo=timezone.utc,
+        )
+        suffix = month_start.strftime("%Y%m")
+        table_name = f"event_log_{suffix}"
+        from_literal = month_start.isoformat()
+        to_literal = next_start.isoformat()
+
+        exists = db.session.execute(
+            _sa_text(
+                "SELECT 1 FROM pg_class "
+                "WHERE relname = :name AND relkind = 'r'"
+            ),
+            {"name": table_name},
+        ).scalar()
+        if not exists:
+            db.session.execute(
+                _sa_text(
+                    f"CREATE TABLE {table_name} "
+                    f"PARTITION OF event_log "
+                    f"FOR VALUES FROM ('{from_literal}'::timestamptz) "
+                    f"TO ('{to_literal}'::timestamptz)"
+                )
+            )
+            created += 1
+
+    db.session.commit()
+    return created
+
+
+# --------------------------------------------------------------------------- #
 # Consumer read API
 # --------------------------------------------------------------------------- #
 
@@ -196,6 +250,7 @@ def _row_to_dict(row: EventLogRecord) -> dict:
 
 
 __all__ = [
+    "ensure_future_partitions",
     "relay_outbox_batch",
     "read_from_offset",
     "replay_from",
