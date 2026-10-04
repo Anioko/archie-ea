@@ -114,6 +114,111 @@ def _append_one(outbox: OperationOutboxEvent) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Partition maintenance
+# --------------------------------------------------------------------------- #
+
+
+def ensure_future_partitions(months_ahead: int = 3) -> int:
+    """Create monthly partitions for the next *months_ahead* months if missing.
+
+    Idempotent — checks existence before creating so a re-run is a no-op.
+    If the DEFAULT partition already holds rows for a target month, those
+    rows are moved into the new partition before it is attached, so
+    PostgreSQL never refuses the attach with a range-overlap error.
+
+    Each month runs in its own savepoint: one failing month is logged and
+    skipped without stopping the others or crashing the scheduler.
+
+    Returns the number of partitions actually created (0 when all exist).
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    created = 0
+    for offset in range(months_ahead):
+        month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+        if offset > 0:
+            y, m = month_start.year, month_start.month + offset
+            while m > 12:
+                y += 1
+                m -= 12
+            month_start = datetime(y, m, 1, tzinfo=timezone.utc)
+        next_start = datetime(
+            month_start.year + (month_start.month // 12),
+            (month_start.month % 12) + 1, 1, tzinfo=timezone.utc,
+        )
+        suffix = month_start.strftime("%Y%m")
+        table_name = f"event_log_{suffix}"
+        from_literal = month_start.isoformat()
+        to_literal = next_start.isoformat()
+
+        exists = db.session.execute(
+            _sa_text(
+                "SELECT 1 FROM pg_class "
+                "WHERE relname = :name AND relkind = 'r'"
+            ),
+            {"name": table_name},
+        ).scalar()
+        if exists:
+            continue
+
+        sp = db.session.begin_nested()
+        try:
+            # 1. Create the table standalone (same shape as event_log).
+            db.session.execute(
+                _sa_text(
+                    f"CREATE TABLE {table_name} "
+                    f"(LIKE event_log INCLUDING ALL)"
+                )
+            )
+
+            # 2. Move any rows already in the DEFAULT partition for this
+            #    month into the new table.
+            db.session.execute(
+                _sa_text(
+                    f"INSERT INTO {table_name} "
+                    f"SELECT * FROM event_log_default "
+                    f"WHERE created_at >= '{from_literal}'::timestamptz "
+                    f"  AND created_at <  '{to_literal}'::timestamptz"
+                )
+            )
+
+            # 3. Remove those rows from the DEFAULT partition.
+            db.session.execute(
+                _sa_text(
+                    f"DELETE FROM event_log_default "
+                    f"WHERE created_at >= '{from_literal}'::timestamptz "
+                    f"  AND created_at <  '{to_literal}'::timestamptz"
+                )
+            )
+
+            # 4. Attach the new table as a partition.
+            db.session.execute(
+                _sa_text(
+                    f"ALTER TABLE event_log "
+                    f"ATTACH PARTITION {table_name} "
+                    f"FOR VALUES FROM ('{from_literal}'::timestamptz) "
+                    f"TO ('{to_literal}'::timestamptz)"
+                )
+            )
+
+            sp.commit()
+            created += 1
+        except Exception:
+            try:
+                sp.rollback()
+            except Exception:
+                pass
+            logger.exception(
+                "ensure_future_partitions: failed for month %s (table %s)",
+                suffix, table_name,
+            )
+
+    db.session.commit()
+    return created
+
+
+# --------------------------------------------------------------------------- #
 # Consumer read API
 # --------------------------------------------------------------------------- #
 
@@ -196,6 +301,7 @@ def _row_to_dict(row: EventLogRecord) -> dict:
 
 
 __all__ = [
+    "ensure_future_partitions",
     "relay_outbox_batch",
     "read_from_offset",
     "replay_from",
