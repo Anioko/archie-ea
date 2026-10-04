@@ -31,7 +31,7 @@ from alembic import op
 from sqlalchemy import text
 
 revision = "20261003_row_level_security"
-down_revision = "20261002_data_domain_org_unique"
+down_revision = "20261002_agent_oversight_state"
 branch_labels = None
 depends_on = None
 
@@ -353,16 +353,50 @@ def upgrade():
     # ------------------------------------------------------------------ #
     # 1. Create the platform role for migrations (BYPASSRLS).
     #    This role must NEVER be used by application code.
+    #
+    #    Role creation is guarded (CREATE ROLE is cluster-wide and must
+    #    only happen once), but the GRANT statements below are NOT --
+    #    grants are per-database, so a freshly created database still
+    #    needs them applied even when the role itself already exists on
+    #    this Postgres cluster from a previous database. Gating the
+    #    grants behind "role doesn't exist yet" was the original bug
+    #    here: BYPASSRLS only bypasses row-level security POLICIES, not
+    #    ordinary table-level GRANT/REVOKE permissions, so a role with no
+    #    grants in this database still gets "permission denied" on any
+    #    table regardless of BYPASSRLS.
     # ------------------------------------------------------------------ #
     if not _role_exists(bind, "archie_platform"):
         bind.execute(text("CREATE ROLE archie_platform BYPASSRLS NOLOGIN"))
-        # Grant usage on schema and all table privileges so migrations work.
-        bind.execute(text("GRANT USAGE ON SCHEMA public TO archie_platform"))
-        bind.execute(text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO archie_platform"))
-        bind.execute(text("GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO archie_platform"))
-        # Future tables: default privileges for the role that runs migrations.
-        bind.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO archie_platform"))
-        bind.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO archie_platform"))
+    bind.execute(text("GRANT USAGE ON SCHEMA public TO archie_platform"))
+    bind.execute(text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO archie_platform"))
+    bind.execute(text("GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO archie_platform"))
+    # Future tables: default privileges for the role that runs migrations.
+    bind.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO archie_platform"))
+    bind.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO archie_platform"))
+
+    # ------------------------------------------------------------------ #
+    # 1b. The application's own role (archie_app) is provisioned once at
+    #     the infrastructure level, outside this migration system -- no
+    #     migration creates it. Table/sequence grants, however, are
+    #     per-database, not cluster-wide, so a freshly created database
+    #     never has them until something grants them here. RLS filters
+    #     which ROWS archie_app can see or affect; it is not a substitute
+    #     for the baseline table-level grant every ordinary table needs,
+    #     so this grants the same standard DML privileges a normal
+    #     non-superuser application role would have in production.
+    # ------------------------------------------------------------------ #
+    if _role_exists(bind, "archie_app"):
+        bind.execute(text("GRANT USAGE ON SCHEMA public TO archie_app"))
+        bind.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO archie_app"))
+        bind.execute(text("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO archie_app"))
+        bind.execute(text(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO archie_app"
+        ))
+        bind.execute(text(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+            "GRANT USAGE, SELECT ON SEQUENCES TO archie_app"
+        ))
 
     # ------------------------------------------------------------------ #
     # 2. Enable RLS with FORCE ROW LEVEL SECURITY on TenantMixin tables.
@@ -486,3 +520,18 @@ def downgrade():
     # Drop the platform role (only if no other objects depend on it).
     if _role_exists(bind, "archie_platform"):
         bind.execute(text("DROP ROLE IF EXISTS archie_platform"))
+
+    # Revoke the DML grants given to archie_app -- the role itself is
+    # infrastructure, provisioned outside this migration, so it is never
+    # created or dropped here, only its grants in this database are undone.
+    if _role_exists(bind, "archie_app"):
+        bind.execute(text(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+            "REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM archie_app"
+        ))
+        bind.execute(text(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+            "REVOKE USAGE, SELECT ON SEQUENCES FROM archie_app"
+        ))
+        bind.execute(text("REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM archie_app"))
+        bind.execute(text("REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM archie_app"))
