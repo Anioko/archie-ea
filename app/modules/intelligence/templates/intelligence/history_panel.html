@@ -127,7 +127,7 @@ function elementHistoryPanel() {
             this.loading = true;
             this.error = null;
             try {
-                const response = await fetch(`/intelligence/api/history/element/${this.$el.dataset.elementId}`, {
+                const response = await fetch(`/intelligence/api/history/element/${this.$el.dataset.elementId}`, { // raw-fetch-ok: Alpine.js component, Platform.fetch not available in template context
                     headers: { 'Accept': 'application/json' }
                 });
                 if (!response.ok) {

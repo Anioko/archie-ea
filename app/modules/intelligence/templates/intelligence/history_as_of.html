@@ -226,7 +226,7 @@ function asOfPage() {
                 const params = new URLSearchParams({
                     as_of: this.asOfDate,
                 });
-                const response = await fetch(`/intelligence/api/history/as-of?${params}`, {
+                const response = await fetch(`/intelligence/api/history/as-of?${params}`, { // raw-fetch-ok: Alpine.js component, Platform.fetch not available in template context
                     headers: { 'Accept': 'application/json' }
                 });
                 if (!response.ok) {

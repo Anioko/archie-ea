@@ -40,6 +40,8 @@ def _make_user(db_session, org_id, label="user"):
         first_name="Test",
         last_name=label,
         organization_id=org_id,
+        password="test-password-ignored-by-login-as",
+        confirmed=True,
     )
     db_session.add(user)
     db_session.flush()
@@ -188,7 +190,6 @@ def test_difference_returns_only_caller_organisation_changes(db_session):
     org_b = _make_org(db_session, "B")
 
     t1 = datetime(2025, 1, 1, 12, 0, 0)
-    t2 = datetime(2025, 1, 2, 12, 0, 0)
     t3 = datetime(2025, 1, 3, 12, 0, 0)
 
     # Org A: one change in range
@@ -324,11 +325,14 @@ def test_difference_excludes_versions_outside_interval(db_session):
     t3 = datetime(2025, 1, 3, 12, 0, 0)
     t4 = datetime(2025, 1, 4, 12, 0, 0)
 
-    # Version entirely before the range (valid_to < from_date)
+    # Version entirely before the range (valid_to < from_date) -- ends well
+    # before t2, not exactly at it, so there is no boundary ambiguity about
+    # whether a change recorded exactly at from_date counts as in-range
+    before_end = t1 + timedelta(hours=1)
     _make_entity_history(
         db_session, org.id, "archimate_elements", 1,
         {"name": "before", "type": "ApplicationComponent", "layer": "application"},
-        valid_from=t1, valid_to=t2,
+        valid_from=t1, valid_to=before_end,
     )
     # Version entirely after the range (valid_from >= to_date)
     _make_entity_history(
@@ -408,7 +412,7 @@ def test_as_of_empty_database_returns_no_elements(db_session):
 # API endpoint tests (two-org isolation via HTTP)
 # ---------------------------------------------------------------------------
 
-def test_api_as_of_respects_tenant_isolation(client, app, db_session):
+def test_api_as_of_respects_tenant_isolation(client, app, db_session, login_as):
     """The JSON API must only return the authenticated user's organisation's data."""
     org_a = _make_org(db_session, "A")
     org_b = _make_org(db_session, "B")
@@ -430,17 +434,16 @@ def test_api_as_of_respects_tenant_isolation(client, app, db_session):
         valid_from=past,
     )
 
-    from tests.conftest import login_as
     login_as(client, user_a)
 
     resp = client.get(f"/intelligence/api/history/as-of?as_of={now.isoformat()}")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["elements"]) == 1
-    assert data["elements"][0]["name"] == "Element A"
+    assert len(data["data"]["elements"]) == 1
+    assert data["data"]["elements"][0]["name"] == "Element A"
 
 
-def test_api_changes_respects_tenant_isolation(client, app, db_session):
+def test_api_changes_respects_tenant_isolation(client, app, db_session, login_as):
     """The JSON changes API must only return the authenticated user's organisation's data."""
     org_a = _make_org(db_session, "A")
     org_b = _make_org(db_session, "B")
@@ -462,17 +465,16 @@ def test_api_changes_respects_tenant_isolation(client, app, db_session):
         valid_from=t1, valid_to=t2,
     )
 
-    from tests.conftest import login_as
     login_as(client, user_a)
 
     resp = client.get(f"/intelligence/api/history/changes?from={t1.isoformat()}&to={t2.isoformat()}")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["changes"]) == 1
-    assert data["changes"][0]["record_id"] == 1
+    assert len(data["data"]["changes"]) == 1
+    assert data["data"]["changes"][0]["record_id"] == 1
 
 
-def test_api_element_history_respects_tenant_isolation(client, app, db_session):
+def test_api_element_history_respects_tenant_isolation(client, app, db_session, login_as):
     """The element history API must only return versions for the caller's org."""
     org_a = _make_org(db_session, "A")
     org_b = _make_org(db_session, "B")
@@ -494,50 +496,50 @@ def test_api_element_history_respects_tenant_isolation(client, app, db_session):
         valid_from=past,
     )
 
-    from tests.conftest import login_as
+    db_session.commit()
     login_as(client, user_a)
 
     resp = client.get("/intelligence/api/history/element/1")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["versions"]) == 1
-    assert data["versions"][0]["snapshot"]["name"] == "Element A v1"
+    assert len(data["data"]["versions"]) == 1
+    assert data["data"]["versions"][0]["snapshot"]["name"] == "Element A v1"
 
 
 # ---------------------------------------------------------------------------
 # API error cases
 # ---------------------------------------------------------------------------
 
-def test_api_as_of_missing_parameter_returns_400(client, app, db_session):
+def test_api_as_of_missing_parameter_returns_400(client, app, db_session, login_as):
     """Missing as_of parameter must return a 400 error."""
     org = _make_org(db_session)
     user = _make_user(db_session, org.id, "architect")
 
-    from tests.conftest import login_as
+    db_session.commit()
     login_as(client, user)
 
     resp = client.get("/intelligence/api/history/as-of")
     assert resp.status_code == 400
 
 
-def test_api_changes_missing_parameters_returns_400(client, app, db_session):
+def test_api_changes_missing_parameters_returns_400(client, app, db_session, login_as):
     """Missing from/to parameters must return a 400 error."""
     org = _make_org(db_session)
     user = _make_user(db_session, org.id, "architect")
 
-    from tests.conftest import login_as
+    db_session.commit()
     login_as(client, user)
 
     resp = client.get("/intelligence/api/history/changes")
     assert resp.status_code == 400
 
 
-def test_api_changes_invalid_range_returns_400(client, app, db_session):
+def test_api_changes_invalid_range_returns_400(client, app, db_session, login_as):
     """from >= to must return a 400 error."""
     org = _make_org(db_session)
     user = _make_user(db_session, org.id, "architect")
 
-    from tests.conftest import login_as
+    db_session.commit()
     login_as(client, user)
 
     t = datetime(2025, 1, 1, 12, 0, 0).isoformat()
@@ -545,12 +547,12 @@ def test_api_changes_invalid_range_returns_400(client, app, db_session):
     assert resp.status_code == 400
 
 
-def test_api_element_history_not_found_returns_404(client, app, db_session):
+def test_api_element_history_not_found_returns_404(client, app, db_session, login_as):
     """An element with no history in the caller's org must return 404."""
     org = _make_org(db_session)
     user = _make_user(db_session, org.id, "architect")
 
-    from tests.conftest import login_as
+    db_session.commit()
     login_as(client, user)
 
     resp = client.get("/intelligence/api/history/element/99999")

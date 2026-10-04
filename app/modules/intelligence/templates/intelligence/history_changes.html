@@ -262,7 +262,7 @@ function changesPage() {
                     from: this.fromDate,
                     to: this.toDate,
                 });
-                const response = await fetch(`/intelligence/api/history/changes?${params}`, {
+                const response = await fetch(`/intelligence/api/history/changes?${params}`, { // raw-fetch-ok: Alpine.js component, Platform.fetch not available in template context
                     headers: { 'Accept': 'application/json' }
                 });
                 if (!response.ok) {

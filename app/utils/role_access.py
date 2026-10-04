@@ -625,7 +625,7 @@ _MY_WORK_LINKS = {
         # architect is the persona that owns the capability model and needs
         # to audit its evolution.
         _link("Model as of", "intelligence_ui.history_as_of_page", "clock"),
-        _link("Changes", "intelligence_ui.history_changes_page", "git-compare"),
+        _link("Changes", "intelligence_ui.history_changes_page", "history"),
     ],
     ROLE_CTO: [
         # A CTO with no route to a roadmap from their own sidebar. Found

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, current_app, g, jsonify, render_template, request
+from flask import g, render_template, request
 from flask_login import login_required
 
 from app.modules.intelligence.services.history_service import HistoryService

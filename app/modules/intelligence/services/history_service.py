@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.entity_history import EntityHistory
@@ -272,11 +272,7 @@ class HistoryService:
         if not history_rows:
             return {}
 
-        # Build a set of (table_name, record_id) pairs we need
-        keys = {(row.table_name, row.record_id) for row in history_rows}
-
-        # Fetch audit entries for these keys in the extended range
-        # We extend slightly to catch entries just before/after
+        # Fetch audit entries for these records in the date range
         audit_rows = self.session.execute(
             select(AuditLog).where(
                 AuditLog.organization_id == self.organization_id,
