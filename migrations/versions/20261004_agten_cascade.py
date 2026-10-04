@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy import text
 
 revision = "20261004_agten_cascade"
-down_revision = "20261003_fw_adopt"
+down_revision = "20261002_event_log"
 branch_labels = None
 depends_on = None
 
