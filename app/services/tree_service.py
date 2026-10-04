@@ -68,18 +68,6 @@ TREE_REGISTRY = {
         "root_label": "ArchiMate Elements",
         "order_by": ["layer", "type", "name"],
     },
-    "unified_capability": {
-        "model": "app.models.unified_capability.UnifiedCapability",
-        "parent_fk": "parent_capability_id",
-        "name_field": "name",
-        "fields": [
-            "description", "level", "domain_id", "specialization_type",
-            "current_maturity_level", "target_maturity_level",
-            "business_criticality", "business_owner",
-        ],
-        "root_label": "Unified Capabilities",
-        "order_by": ["level", "name"],
-    },
     "requirement": {
         "model": "app.models.models.Requirement",
         "parent_fk": "parent_requirement_id",

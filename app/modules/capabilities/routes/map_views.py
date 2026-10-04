@@ -36,11 +36,10 @@ def _compute_capability_mapping_counts():
     real dict.
 
     Uses ``UnifiedApplicationCapabilityMapping`` joined with
-    ``UnifiedCapability`` (the canonical store PR 1 built). The org predicate
-    is applied via ``UnifiedCapability``'s hybrid tenant scoping
-    (``HybridCapabilityTenantMixin`` + ``do_orm_execute`` listener), which
-    includes shared reference rows (``scope == "reference"`` and
-    ``organization_id IS NULL``) plus the tenant's own rows.
+    ``UnifiedCapability`` (the canonical store PR 1 built). Only the
+    tenant's own capabilities (``organization_id == org_id``) are counted;
+    shared reference capabilities (``organization_id IS NULL``) are
+    excluded from per-organisation mapping counts.
     """
     org_id = getattr(g, "current_org_id", None)
     if org_id is None:
@@ -62,8 +61,7 @@ def _compute_capability_mapping_counts():
                 UnifiedCapability,
                 UnifiedApplicationCapabilityMapping.unified_capability_id == UnifiedCapability.id,
             )
-            # UnifiedCapability's do_orm_execute listener scopes the join
-            # automatically to the current tenant (shared reference + own rows).
+            .filter(UnifiedCapability.organization_id == org_id)
             .group_by(UnifiedApplicationCapabilityMapping.unified_capability_id)
             .all()
         )
@@ -80,11 +78,11 @@ def _compute_capability_mapping_counts():
 def index():
     """Main capability mapping page"""
     from app.modules.capabilities.services.capability_count_service import (
-        count_business_capabilities,
+        count_capabilities,
     )
 
     try:
-        total_capabilities = count_business_capabilities()
+        total_capabilities = count_capabilities()
     except Exception:
         current_app.logger.exception("Could not count business capabilities")
         total_capabilities = None
