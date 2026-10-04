@@ -622,7 +622,20 @@ def _typed_actor():
 def _typed_queue_context():
     actor = _typed_actor()
     if actor is None:
-        return None
+        # R1-B31: No actor context (should not happen for authenticated users
+        # with organization_id). Return an empty queue view instead of None
+        # so the consolidated template always has a valid typed_queue.
+        return {
+            "state": "empty",
+            "reason": "no_actor_context",
+            "filters": {},
+            "filter_options": {},
+            "items": [],
+            "page": 1,
+            "page_size": 25,
+            "total_items": 0,
+            "total_pages": 0,
+        }
     try:
         from app.modules.transformation_room.arb_read_models import (
             typed_arb_queue_view,
@@ -655,7 +668,17 @@ def _typed_queue_context():
 def _typed_review_context(review_item_id):
     actor = _typed_actor()
     if actor is None:
-        return None
+        # R1-B31: No actor context. Return a failed view so the consolidated
+        # template renders the error state instead of crashing.
+        return {
+            "state": "failed",
+            "reason": "no_actor_context",
+            "identity": {},
+            "subject": {},
+            "evidence": {},
+            "governance": {},
+            "allowed_actions": [],
+        }
     try:
         from app.modules.transformation_room.arb_read_models import (
             typed_arb_review_view,
@@ -664,7 +687,15 @@ def _typed_review_context(review_item_id):
         return typed_arb_review_view(actor=actor, review_item_id=review_item_id)
     except Exception:
         current_app.logger.exception("typed ARB review view failed")
-        return None
+        return {
+            "state": "failed",
+            "reason": "arb_review_unavailable",
+            "identity": {},
+            "subject": {},
+            "evidence": {},
+            "governance": {},
+            "allowed_actions": [],
+        }
 
 
 @arb_bp.route("/dashboard")
@@ -958,38 +989,16 @@ def dashboard():
 
     typed_queue = _typed_queue_context()
 
-    # ADR-0008 (store agreement). The KPI tiles above count arb_review_items
-    # while the queue below reads the typed ARBReviewCycle graph, so a tenant
-    # whose reviews predate typed submission saw "Total reviews 6 / Pending 2"
-    # printed directly above "No typed ARB reviews yet" -- two queries answering
-    # the same question with different answers on one screen.
-    #
-    # The tiles are not wrong: those rows exist. The queue is not wrong either:
-    # they are not typed. So the list renders the rows the tiles counted,
-    # labelled for what they are, instead of claiming there are none. Nothing is
-    # repointed and no count is invented.
-    generic_reviews = []
-    if typed_queue and typed_queue.get("state") == "empty":
-        try:
-            generic_reviews = (
-                ARBReviewItem.query.options(joinedload(ARBReviewItem.submitter))
-                .order_by(ARBReviewItem.created_at.desc())
-                .limit(15)
-                .all()
-            )
-        except Exception:
-            # Leave the list empty rather than fabricating rows; the tiles above
-            # still show the counts and the failure is logged.
-            db.session.rollback()
-            current_app.logger.exception("ARB dashboard generic review list failed")
-
+    # R1-B31: Consolidated governance queue - typed queue is the single code path.
+    # The legacy generic_reviews fallback has been removed. The typed queue
+    # (arb_review_cycles graph) is the authoritative view. If the read model
+    # returns 'empty', the queue partial renders its own empty state.
+    # If the read model returns 'failed', the queue partial renders an error
+    # alert and the response status is 503.
     response_status = 503 if typed_queue and typed_queue.get("state") == "failed" else 200
     return render_template(
         "arb/dashboard.html",
-        # The dispatcher renders the typed queue whenever an actor exists. A
-        # failed read remains typed and visible; it never resurrects legacy UI.
         typed_queue=typed_queue,
-        generic_reviews=generic_reviews,
         sessions=recent_sessions,
         status=request.args.get("status", "all"),
         pending_reviews=pending_reviews,
@@ -1624,11 +1633,12 @@ def review_detail(id):
         current_app.logger.exception(f"Failed to load audit trail for review {id}")
 
     typed_review = _typed_review_context(id)
+    # R1-B31: Consolidated governance workspace - typed review is the single code path.
+    # The legacy branch has been removed. The typed review workspace handles all
+    # states: available, historical_unverified, legacy_generic, failed.
     response_status = 503 if typed_review and typed_review.get("state") == "failed" else 200
     return render_template(
         "arb/review_detail.html",
-        # Same dispatch contract as the queue: typed workspace when the read
-        # model resolves this review for the current tenant, legacy otherwise.
         typed_review=typed_review,
         review=review,
         application_names=application_names,
