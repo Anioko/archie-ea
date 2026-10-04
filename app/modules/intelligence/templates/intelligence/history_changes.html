@@ -1,6 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/provenance.html' import provenance_badge %}
+{% from 'components/loading_state.html' import loading_inline %}
 
 {% block title %}Changes{% endblock %}
 
@@ -38,11 +39,7 @@
                         :disabled="loading"
                         class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:pointer-events-none">
                     <template x-if="loading">
-                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Loading...
+                        {{ loading_inline(size='sm', text='Loading...') }}
                     </template>
                     <template x-if="!loading">Show changes</template>
                 </button>
@@ -173,12 +170,12 @@
             <template x-if="groupByElement">
                 <div class="space-y-4" role="list" aria-label="Changes grouped by element">
                     <template x-for="(groupChanges, groupKey) in groupedChanges" :key="groupKey">
-                        <details class="rounded-lg border border-border bg-background" open>
-                            <summary class="p-4 cursor-pointer flex items-center justify-between">
+                        <div class="rounded-lg border border-border bg-background" x-data="{ expanded: true }">
+                            <div class="p-4 cursor-pointer flex items-center justify-between" @click="expanded = !expanded">
                                 <span class="font-medium text-foreground" x-text="groupKey"></span>
                                 <span class="text-sm text-muted-foreground" x-text="groupChanges.length + ' change' + (groupChanges.length === 1 ? '' : 's')"></span>
-                            </summary>
-                            <div class="px-4 pb-4 space-y-3 border-t border-border">
+                            </div>
+                            <div x-show="expanded" x-cloak class="px-4 pb-4 space-y-3 border-t border-border">
                                 <template x-for="change in groupChanges" :key="change.table_name + '_' + change.record_id + '_' + change.valid_from">
                                     <article class="rounded-lg border border-border bg-card p-3" role="listitem">
                                         <header class="flex flex-wrap items-start justify-between gap-3 mb-2">
@@ -218,7 +215,7 @@
                                     </article>
                                 </template>
                             </div>
-                        </details>
+                        </div>
                     </template>
                 </div>
             </template>
