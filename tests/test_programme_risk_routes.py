@@ -305,7 +305,7 @@ def test_programme_rollup_reads_canonical_risks(
         # The rollup counts risks linked to the programme (entity_type=programme)
         # The solution risk is linked to the solution, not the programme directly
         assert rollup["risks"]["total"] == 1
-        assert rollup["risks"]["by_impact"].get("high", 0) == 1  # 3*4=12 -> high
+        assert rollup["risks"]["by_level"].get("high", 0) == 1  # 3*4=12 -> high
 
 
 def test_entities_risks_endpoint_refuses_invalid_entity_type(
@@ -318,3 +318,83 @@ def test_entities_risks_endpoint_refuses_invalid_entity_type(
     resp = client.get("/api/entities/invalid_type/123/risks")
     assert resp.status_code == 400
     assert "error" in resp.get_json()
+
+
+def test_risk_level_reflects_residual_then_inherent_then_base(
+        app, db_session, make_org, tenant_ctx):
+    """risk_level cascades: residual > inherent > base likelihood×impact."""
+    from app.services import risk_service
+    from app.models.risk import Risk
+
+    org = make_org("prog-risk-level-cascade")
+    with tenant_ctx(org.id):
+        # Base only: likelihood=2, impact=2 → score=4 → "low"
+        risk = risk_service.create_risk(
+            solution_id=None, title="Base-only risk",
+            description="No scores set", likelihood=2, impact=2,
+            owner="PM", mitigation_plan="None",
+        )
+        assert risk.risk_level == "low"
+
+        # Set inherent: 4×4=16 → "critical"
+        risk_service.set_risk_score(risk.id, "inherent", likelihood=4, impact=4)
+        risk = Risk.query.filter_by(id=risk.id).first()
+        assert risk.risk_level == "critical", (
+            f"Expected critical after inherent 4×4, got {risk.risk_level}"
+        )
+
+        # Set residual: 2×2=4 → "low" (overrides inherent)
+        risk_service.set_risk_score(risk.id, "residual", likelihood=2, impact=2)
+        risk = Risk.query.filter_by(id=risk.id).first()
+        assert risk.risk_level == "low", (
+            f"Expected low after residual 2×2, got {risk.risk_level}"
+        )
+
+        # Risk with only residual set (no inherent): 5×4=20 → "critical"
+        risk2 = risk_service.create_risk(
+            solution_id=None, title="Residual-only risk",
+            description="Only residual", likelihood=1, impact=1,
+            owner="PM", mitigation_plan="None",
+        )
+        risk_service.set_risk_score(risk2.id, "residual", likelihood=5, impact=4)
+        risk2 = Risk.query.filter_by(id=risk2.id).first()
+        assert risk2.risk_level == "critical", (
+            f"Expected critical after residual 5×4, got {risk2.risk_level}"
+        )
+
+
+def test_rollup_includes_risks_regardless_of_member_ids(
+        app, db_session, make_org, tenant_ctx):
+    """ProgrammeGovernanceService.rollup includes risks linked to the
+    programme even when the programme has zero member solutions.
+
+    Before the fix, the risk posture block was guarded by ``if member_ids:``,
+    so a programme with no member solutions would silently report risk_total=0
+    and risk_by_level={} even when risks were linked directly to it.
+    """
+    from app.modules.solutions_strategic.v2.services.programme_governance_service import (
+        ProgrammeGovernanceService,
+    )
+    from app.services import risk_service
+
+    org = make_org("prog-rollup-no-members")
+    programme = _programme(db_session, org, "No-Member Programme")
+    programme_id = programme.id
+
+    with tenant_ctx(org.id):
+        # Create a risk linked directly to the programme — no member solutions exist
+        risk = risk_service.create_risk(
+            solution_id=None, title="Direct programme risk",
+            description="Linked to programme with no members",
+            likelihood=4, impact=4,  # 4*4=16 -> critical
+            owner="PM", mitigation_plan="Mitigate",
+        )
+        risk_service.add_risk_link(risk.id, "programme", programme_id)
+
+        rollup = ProgrammeGovernanceService.rollup(programme_id)
+        assert rollup is not None
+        # The rollup must include the risk even though member_ids is empty
+        assert rollup["risks"]["total"] == 1, (
+            f"Expected 1 risk in rollup, got {rollup['risks']['total']}"
+        )
+        assert rollup["risks"]["by_level"].get("critical", 0) == 1

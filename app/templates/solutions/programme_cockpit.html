@@ -47,7 +47,7 @@
             <p class="text-xs text-muted-foreground uppercase tracking-wider">Risks</p>
             <p class="text-2xl font-bold text-foreground mt-1">{{ rollup.risks.total }}</p>
             <p class="text-xs text-muted-foreground mt-0.5">
-                {{ rollup.risks.by_impact.get('high', 0) + rollup.risks.by_impact.get('critical', 0) }} high/critical
+                {{ rollup.risks.by_level.get('high', 0) + rollup.risks.by_level.get('critical', 0) }} high/critical
             </p>
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
@@ -722,7 +722,7 @@
                 const classes = {
                     'critical': 'bg-destructive/10 text-destructive border-destructive/30',
                     'high': 'bg-warning/10 text-warning border-warning/30',
-                    'medium': 'bg-warning/10 text-warning border-warning/30',
+                    'medium': 'bg-primary/10 text-primary border-primary/30',
                     'low': 'bg-success/10 text-success border-success/30',
                 };
                 return classes[level] || 'bg-muted text-muted-foreground border-border';

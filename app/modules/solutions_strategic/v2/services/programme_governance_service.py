@@ -530,17 +530,16 @@ class ProgrammeGovernanceService:
 
         # --- risk posture -------------------------------------------------
         risk_total = 0
-        risk_by_impact: Dict[str, int] = {}
-        if member_ids:
-            from app.services import risk_service
+        risk_by_level: Dict[str, int] = {}
+        from app.services import risk_service
 
-            # Read canonical risks linked to this programme (entity_type="programme")
-            programme_risks = risk_service.risks_linked_to("programme", initiative_id)
-            risk_total = len(programme_risks)
-            # Group by risk_level (derived from likelihood * impact)
-            for risk in programme_risks:
-                level = risk.risk_level  # "critical", "high", "medium", "low"
-                risk_by_impact[level] = risk_by_impact.get(level, 0) + 1
+        # Read canonical risks linked to this programme (entity_type="programme")
+        programme_risks = risk_service.risks_linked_to("programme", initiative_id)
+        risk_total = len(programme_risks)
+        # Group by risk_level (derived from likelihood * impact)
+        for risk in programme_risks:
+            level = risk.risk_level  # "critical", "high", "medium", "low"
+            risk_by_level[level] = risk_by_level.get(level, 0) + 1
 
         # --- transition timeline (plateaus as programme waves) -----------
         waves: List[Dict[str, Any]] = []
@@ -629,7 +628,7 @@ class ProgrammeGovernanceService:
                 "by_module": by_module,
                 "weights": CLEAN_CORE_WEIGHTS,
             },
-            "risks": {"total": risk_total, "by_impact": risk_by_impact},
+            "risks": {"total": risk_total, "by_level": risk_by_level},
             "waves": waves,
             "vendors": vendors,
         }
