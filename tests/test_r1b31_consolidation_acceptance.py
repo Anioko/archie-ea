@@ -432,7 +432,7 @@ def test_org_b_cannot_waive_org_a_condition(db_session, make_org):
     )
     cycle_id = submission.object_ids["review_cycle_id"]
 
-    decision = TypedARBDecisionService.decide(
+    TypedARBDecisionService.decide(
         actor=ctx["decider_actor_a"],
         command_key=f"decide-waive-a-{ctx['suffix']}",
         cycle_id=cycle_id,
