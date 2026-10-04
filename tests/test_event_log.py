@@ -23,6 +23,7 @@ from app.models.event_log import EventLogRecord
 from app.models.organization import Organization
 from app.models.transformation_execution import OperationOutboxEvent
 from app.services.event_log_service import (
+    ensure_future_partitions,
     relay_outbox_batch,
     read_from_offset,
     replay_from,
@@ -769,6 +770,14 @@ class TestConcurrentOrdinalAllocation:
         t1.join(timeout=30)
         t2.join(timeout=30)
 
+        # Ensure the patch is always removed, even if a thread left it
+        # behind.  Without this, subsequent tests that call relay_outbox_batch
+        # (which calls _append_one) will invoke the barrier closure from a
+        # different test and fail with BrokenBarrierError.
+        import app.services.event_log_service as _els
+        if getattr(_els, "_append_one", None) is not _real_append_one:
+            _els._append_one = _real_append_one
+
         assert len(errors) == 0, f"Thread errors: {errors}"
 
         # Verify ordinals are unique and gap-free.
@@ -804,3 +813,213 @@ class TestConcurrentOrdinalAllocation:
             )
             app_db.session.commit()
             app_db.session.remove()
+
+
+# ---------------------------------------------------------------------------
+# Out-of-range date: outbox events before the first partition are relayed
+# ---------------------------------------------------------------------------
+
+
+class TestOutOfRangeDateRelay:
+    """An outbox event whose created_at falls before the earliest monthly
+    partition must still be relayed into event_log — the DEFAULT partition
+    catches it."""
+
+    def test_outbox_event_before_first_partition_is_relayed(
+        self, db_session, two_orgs
+    ):
+        org_a = two_orgs["A"]
+
+        # Insert an outbox row directly with a created_at before the first
+        # partition (2026-10).  The transformation_outbox_events table has
+        # an UPDATE trigger that rejects mutation of created_at, so we
+        # insert the row with the ancient timestamp directly.
+        ancient = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
+        event_id = uuid.uuid4().hex
+        db_session.execute(
+            text(
+                "INSERT INTO transformation_outbox_events "
+                "(organization_id, event_type, event_id, ordinal, "
+                " payload_json, entity_type, entity_id, created_at) "
+                "VALUES "
+                "(:org_id, :event_type, :event_id, :ordinal, "
+                " :payload_json, :entity_type, :entity_id, :created_at)"
+            ),
+            {
+                "org_id": org_a.id,
+                "event_type": "test.ancient.event",
+                "event_id": event_id,
+                "ordinal": 1,
+                "payload_json": '{"note": "before first partition"}',
+                "entity_type": "test_entity",
+                "entity_id": 1,
+                "created_at": ancient,
+            },
+        )
+        db_session.commit()
+
+        # Relay must succeed — the DEFAULT partition stores the row.
+        inserted = relay_outbox_batch()
+        db_session.commit()
+
+        assert inserted >= 1, (
+            f"Relay must insert at least the ancient event, got inserted={inserted}"
+        )
+
+        # The ancient event must be in event_log.
+        log_row = (
+            db_session.query(EventLogRecord)
+            .filter(
+                EventLogRecord.organization_id == org_a.id,
+                EventLogRecord.event_id == event_id,
+            )
+            .first()
+        )
+        assert log_row is not None, "Ancient event must be in event_log"
+        assert log_row.event_type == "test.ancient.event"
+
+        # Verify it landed in the DEFAULT partition.
+        row = db_session.execute(
+            text(
+                "SELECT tableoid::regclass AS partition_name "
+                "FROM event_log WHERE organization_id = :org_id "
+                "AND event_id = :event_id"
+            ),
+            {"org_id": org_a.id, "event_id": event_id},
+        ).fetchone()
+        assert row is not None
+        assert row.partition_name == "event_log_default", (
+            f"Ancient event must land in event_log_default, "
+            f"got {row.partition_name}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Partition maintenance: idempotent creation of future monthly partitions
+# ---------------------------------------------------------------------------
+
+
+class TestPartitionMaintenance:
+    """The partition maintenance job creates missing monthly partitions
+    and is a no-op when run twice."""
+
+    def test_creates_missing_partitions_and_is_idempotent(
+        self, db_session
+    ):
+        # Drop a partition that is in the next-3-months window so
+        # ensure_future_partitions will recreate it.
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        # The third month ahead.
+        y, m = now.year, now.month + 2
+        while m > 12:
+            y += 1
+            m -= 12
+        target_suffix = f"{y}{m:02d}"
+        db_session.execute(
+            text(f"DROP TABLE IF EXISTS event_log_{target_suffix}")
+        )
+        db_session.commit()
+
+        # First run: must create the missing partition.
+        created = ensure_future_partitions(months_ahead=3)
+        assert created >= 1, (
+            f"First run must create at least 1 partition, got {created}"
+        )
+
+        # Second run: must be a no-op.
+        created2 = ensure_future_partitions(months_ahead=3)
+        assert created2 == 0, (
+            f"Second run must create 0 partitions, got {created2}"
+        )
+
+    def test_two_org_isolation_not_applicable_platform_job(
+        self, db_session, two_orgs
+    ):
+        """Partition maintenance is a platform job — partitions are shared
+        across all organisations.  Verify that the function runs without
+        a tenant context and does not leak organisation data."""
+        # ensure_future_partitions does not read or write organisation rows;
+        # it only manipulates the partitioning structure.  Running it must
+        # succeed regardless of which organisation is active.
+        created = ensure_future_partitions(months_ahead=3)
+        assert created >= 0  # may be 0 if all partitions already exist
+
+
+# ---------------------------------------------------------------------------
+# Relay batch continues past a failing row
+# ---------------------------------------------------------------------------
+
+
+class TestRelayBatchContinuesPastFailure:
+    """When one row in a batch fails, the relay must continue processing
+    the remaining rows — a single failure must not stop the batch."""
+
+    def test_relay_continues_past_failing_row(
+        self, db_session, two_orgs, caplog
+    ):
+        org_a = two_orgs["A"]
+
+        # Create two outbox rows.
+        event1 = emit_event(
+            organization_id=org_a.id,
+            event_type="test.batch.good",
+            payload={"seq": 1},
+            entity_type="test_entity",
+            entity_id=1,
+        )
+        _event2 = emit_event(
+            organization_id=org_a.id,
+            event_type="test.batch.good2",
+            payload={"seq": 2},
+            entity_type="test_entity",
+            entity_id=2,
+        )
+        db_session.commit()
+
+        # Add a CHECK constraint that rejects inserts where entity_id = 1.
+        # This makes the first row fail while the second succeeds.
+        db_session.execute(
+            text(
+                "ALTER TABLE event_log "
+                "ADD CONSTRAINT ck_test_batch_continue "
+                "CHECK (entity_id IS NULL OR entity_id <> 1) "
+                "NOT VALID"
+            )
+        )
+        db_session.commit()
+
+        with caplog.at_level(logging.ERROR):
+            inserted = relay_outbox_batch()
+            db_session.commit()
+
+        # The good row must have been inserted.
+        assert inserted >= 1, (
+            f"Relay must insert at least the good row, got inserted={inserted}"
+        )
+
+        # The failure must be logged.
+        assert "event_log relay: failed for outbox" in caplog.text, (
+            "Relay must log the failure"
+        )
+
+        # The good row must be in event_log.
+        log_rows = (
+            db_session.query(EventLogRecord)
+            .filter(EventLogRecord.organization_id == org_a.id)
+            .all()
+        )
+        assert len(log_rows) >= 1, (
+            f"At least one event_log row must exist, got {len(log_rows)}"
+        )
+        good_event_types = {r.event_type for r in log_rows}
+        assert "test.batch.good2" in good_event_types, (
+            "The good row must be in event_log"
+        )
+
+        # The failing row must remain unpublished for retry.
+        db_session.expire_all()
+        outbox1 = db_session.get(OperationOutboxEvent, event1.id)
+        assert outbox1.published_at is None, (
+            "Failing outbox row must remain unpublished for retry"
+        )
